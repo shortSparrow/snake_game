@@ -32,15 +32,16 @@ class SnakeGame {
     std::mt19937 engine{seed};
 
     /**
-     * Коли ми хочемо згенерувати нову їжу ми переберемо всі доступні поля board (окрім кордонів і самої змійки) і
-     * оберемо випадково місце для їжі. Цей алгоритм не оптимальний, через перебір масиву і складність від O(n), але
-     * наразі кращого не знаю. Можливо спробувати знайти якусь структуру дани, щоб дійти хоча б до O(log n)
+     * When we want to generate new food we must check all empty fields in board (avoid boundary and snake body)
+     * and select random place for food.
+     * This solution is not the best, because we loop throw all board and has teme complexity O(n), but I can't
+     * figure out better solution for now. Maybe try to find out solution with time complexity O(log n) at least
      */
     Game::Point get_food_position() {
         std::vector<Game::Point> free_space_on_board {};
 
         // set free space to define available space for nex food
-        for (auto i {1}; i<Game::HEIGHT-1; i++) { // починаємо з 1 і Game::HEIGHT-1; тому що є межі зверху і знизу
+        for (auto i {1}; i<Game::HEIGHT-1; i++) { // start from 1 and Game::HEIGHT-1 because we have boundaries from top and bottom
             for (auto j{1}; j<Game::WIDTH-1; j++) {
                 if (board[i][j] == Game::symbols.field) {
                     free_space_on_board.push_back(Game::Point{j,i});
@@ -130,7 +131,7 @@ class SnakeGame {
         }
 
         if (next_head_value == Game::symbols.food) {
-            // Нагодувати
+            // feed the snake
             board[old_tail.y][old_tail.x] = Game::symbols.field;
             snake_body.push_back(old_tail);
 
@@ -170,21 +171,21 @@ public:
     SnakeGame() {
         init();
         set_direction(Game::right);
-        std::cout << ANSI_CODES::hide_cursor << std::flush; // Приховати курсор (l = low)
+        std::cout << ANSI_CODES::hide_cursor << std::flush; // hide caret in terminal
     }
 
     ~SnakeGame() {
-        std::cout << ANSI_CODES::show_cursor << std::flush; // Показати курсор (h = high)
+        std::cout << ANSI_CODES::show_cursor << std::flush; // show caret in terminal
         if (thread.joinable()) {
-            thread.join(); // Чекаємо на завершення
+            thread.join(); // wait to complete thread task
         }
     }
 
     /**
-     *  Тут проблема в тому, що якщо швидко змінювати напрямок, нехай ми рухаємося вверх і робимо вліво і вниз то
-     *  застосується лише останній напрямок вниз, щоб цього уникнути є candidate, ми записуємо будь-який напрямок,
-     *  а уже в циклі перед move, коли timeout пройшов робимо перевірку і обираємо чи застосувати цей напрямок у apply_direction
-     * /
+     * If you change directions too fast, for example, moving up, then quickly pressing left and
+     * down - only the last input ('down') gets applied. To avoid this problem and game end (because snake start move opposite)
+     * we have direction_candidate variable. We set direction to direction_candidate and when next tick comes (before next move)
+     * we set new direction value from direction_candidate (after validation of course)
      */
     void set_direction(const Game::Direction dir) {
         std::scoped_lock l(state_mutex);
@@ -197,17 +198,17 @@ public:
 
     void print_changes() {
         std::scoped_lock l(state_mutex);
-        ANSI_CODES::set_caret_position(head.y + 1, head.x + 1); // +1, тому що board починається з 0, а рядок термінала з 1
+        ANSI_CODES::set_caret_position(head.y + 1, head.x + 1); // +1, because board starts from 0, but terminal row starts from 1
         std::cout << Game::symbols.snake_color << Game::symbols.snake << std::flush << ANSI_CODES::reset;
 
 
         auto const current_tail = snake_body.back();
         if (current_tail.x != old_tail.x || current_tail.y != old_tail.y) {
-            ANSI_CODES::set_caret_position(old_tail.y + 1, old_tail.x + 1); // +1, тому що board починається з 0, а рядок термінала з 1
+            ANSI_CODES::set_caret_position(old_tail.y + 1, old_tail.x + 1); // +1, because board starts from 0, but terminal row starts from 1
             std::cout << Game::symbols.field << std::flush;
         }
 
-        ANSI_CODES::set_caret_position(food.y + 1, food.x + 1); // +1, тому що board починається з 0, а рядок термінала з 1
+        ANSI_CODES::set_caret_position(food.y + 1, food.x + 1); // +1, because board starts from 0, but terminal row starts from 1
         std::cout << Game::symbols.food_color << Game::symbols.food << std::flush  << ANSI_CODES::reset;
 
     }
@@ -244,31 +245,30 @@ void setup_terminal_for_windows() {
     SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
 
-    // Блокуємо ввід даних у термінал. Якщо ввести що на клавіатурі, воно не з'явиться у терміналі, але значення можна отримати через _getch()
+    // Block enter characters in terminal. If you try to enter something - character will not be printed, but we can get thai value by _getch()
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
     DWORD mode = 0;
     GetConsoleMode(hStdin, &mode);
 
-    // Вимикаємо ENABLE_ECHO_INPUT (відображення вводу) та ENABLE_LINE_INPUT (очікування Enter)
+    // We are disabling ENABLE_ECHO_INPUT to prevent characters from appearing on the screen and ENABLE_LINE_INPUT
+    // so that we don't have to wait for the user to press Enter.
     SetConsoleMode(hStdin, mode & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT));
 #endif
 }
 
 
 /**
- * Головна ідея реалізації змійки полягає у точковій зміні тіла змійки, де досягається через ANSI кода
+ * The core idea of this solution is to update only the specific parts of the board that have changed.
+ * We can achieve this using ANSI escape codes, which allow us to position the cursor at specific coordinates:
  * std::cout << "\033[" << y << ";" << x << "H";
- * Тут ми виставляємо абсолютні координати для термінала по x та y.
+ * This command sets the absolute position of the cursor y rows from the top and x columns from the
+ * left enabling us to overwrite only the necessary characters.
  */
 
 int main() {
     setup_terminal_for_windows();
 
-    /**
-     * TODO
-     * 1. Зробити програму кросплатформенною (особливо вивід тексту)
-     * 2. Написати readme
-     */
+    // TODO Make this program crossplatform, move windows only part outside, and check how in works on Linux and Mac
 
     SnakeGame snake_game {};
     snake_game.print_initial_board();
