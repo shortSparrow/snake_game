@@ -2,6 +2,10 @@
 
 A console-based implementation of the classic "Snake" game, written in C++ using multithreading and ANSI escape codes for optimized rendering.
 
+
+https://github.com/user-attachments/assets/804fdd86-81e0-4dad-a98e-4316f439dea2
+
+
 ## Technical Description
 
 The program implements game logic through direct terminal cursor control. Instead of redrawing the entire screen (which causes flickering), the application only updates the modified coordinates: the head, the tail, and the food.
