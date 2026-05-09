@@ -12,7 +12,14 @@
 #include <conio.h> // Для _kbhit() та _getch()
 #endif
 
-
+void clear_screen() {
+#ifdef _WIN32
+    std::system("cls");
+#else
+    // Assume POSIX or other systems
+    std::system("clear");
+#endif
+}
 
 class SnakeGame {
     std::vector<std::vector<char>> board {Game::HEIGHT, std::vector<char>(Game::WIDTH, Game::symbols.field)};
@@ -26,7 +33,7 @@ class SnakeGame {
     std::thread thread {};
     bool is_loop_started {false};
     std::list<Game::Point> snake_body {};
-    Game::Point score_position {3, Game::HEIGHT + 3};
+    Game::Point score_position {};
 
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::mt19937 engine{seed};
@@ -196,6 +203,8 @@ public:
 
     Game::Direction get_direction() const {return direction;}
 
+    Game::State get_state() const {return state;}
+
     void print_changes() {
         std::scoped_lock l(state_mutex);
         ANSI_CODES::set_caret_position(head.y + 1, head.x + 1); // +1, because board starts from 0, but terminal row starts from 1
@@ -215,7 +224,7 @@ public:
 
     void print_score() const {
         ANSI_CODES::set_caret_position(score_position.y, score_position.x);
-        std::cout << "Score: " << state.score << std::flush;
+        std::cout << "Score: " << state.score << "\n" << std::flush;
     }
 
     void print_initial_board() {
@@ -233,6 +242,10 @@ public:
             }
             std::cout << '\n';
         }
+
+        score_position = {0, Game::HEIGHT + 2};
+        print_score();
+        std::cout << "\nControl snake with WASD";
     }
 
 };
@@ -268,12 +281,12 @@ void setup_terminal_for_windows() {
 int main() {
     setup_terminal_for_windows();
 
-    // TODO Make this program crossplatform, move windows only part outside, and check how in works on Linux and Mac
+    // TODO Make this program cross platform, move windows only part outside, and check how in works on Linux and Mac
 
     SnakeGame snake_game {};
     snake_game.print_initial_board();
 
-    while (true) {
+    while (snake_game.get_state().is_game_alive) {
         if (_kbhit()) { // Перевіряємо, чи натиснута клавіша (не блокує цикл)
             const auto ch = _getch(); // Отримуємо символ без відображення на екрані
             if (ch == 27) break;
@@ -287,6 +300,15 @@ int main() {
             snake_game.set_direction(direction);
         }
     }
+    
+    // print end game 
+    clear_screen();
+    int score = snake_game.get_state().score;
+    std::cout << ANSI_CODES::Color::bold_red << "The end" << ANSI_CODES::reset << "\n";
+    std::cout << "Your score: " << score << std::endl;
+    std::cout << ANSI_CODES::show_cursor << std::flush; // show caret in terminal
+    std::cin.get();
+
 
 
     return 0;

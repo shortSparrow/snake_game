@@ -7,7 +7,7 @@ namespace Game {
     enum Direction {up, down, left, right};
     constexpr int WIDTH {100};
     constexpr int HEIGHT {25};
-    constexpr int GAME_SPEED_MS {200};
+    constexpr int GAME_SPEED_MS {100};
     constexpr short SNAKE_INITIAL_LENGTH {3};
 
     struct Symbols {
